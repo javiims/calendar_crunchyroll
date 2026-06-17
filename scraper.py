@@ -32,8 +32,13 @@ def save_history(history):
 
 def load_or_create_rss():
     if os.path.exists(RSS_FILE):
-        tree = ET.parse(RSS_FILE)
-        return tree, tree.getroot()
+        try:
+            tree = ET.parse(RSS_FILE)
+            return tree, tree.getroot()
+        except ET.ParseError:
+            # Si el archivo existe pero está vacío o corrupto, lo detecta y lo sobreescribe
+            print(f"  ⚠️ El archivo {RSS_FILE} está vacío o corrupto. Creando uno nuevo...")
+            pass # Continúa hacia abajo para crear uno nuevo
     
     rss = ET.Element("rss", version="2.0")
     channel = ET.SubElement(rss, "channel")
