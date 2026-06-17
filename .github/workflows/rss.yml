@@ -28,6 +28,10 @@ jobs:
       run: |
         git config --global user.name "GitHub Actions"
         git config --global user.email "actions@github.com"
+        
+        # Esto crea los archivos en blanco si el bot no los ha generado
+        touch history.json feed.xml 
+        
         git add feed.xml history.json
         git commit -m "Actualización del calendario de estrenos" || exit 0
-        git push
+        git push    
