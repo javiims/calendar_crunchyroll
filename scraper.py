@@ -34,20 +34,19 @@ def load_or_create_rss():
             tree = ET.parse(RSS_FILE)
             return tree, tree.getroot()
         except ET.ParseError:
-            print("  [DEBUG] El archivo feed.xml está vacío o corrupto. Se creará uno nuevo.")
             pass
     
     rss = ET.Element("rss", version="2.0")
     channel = ET.SubElement(rss, "channel")
     ET.SubElement(channel, "title").text = "Estrenos Doblajes - Calendario Crunchyroll"
     ET.SubElement(channel, "link").text = "https://www.crunchyroll.com/es-es/simulcastcalendar"
-    ET.SubElement(channel, "description").text = "Avisos de nuevos animes doblados al Castellano (ESES) e Italiano (ITIT) en las próximas 8 semanas."
+    ET.SubElement(channel, "description").text = "Avisos de nuevos animes doblados al Castellano (ESES) e Italiano (ITIT)."
     return ET.ElementTree(rss), rss
 
-def add_rss_item(channel, title, lang, release_time, url):
+def add_rss_item(channel, title, lang, release_time, calendar_url):
     item = ET.SubElement(channel, "item")
     ET.SubElement(item, "title").text = f"¡NUEVO DOBLAJE ({lang})! - {title}"
-    ET.SubElement(item, "link").text = url
+    ET.SubElement(item, "link").text = calendar_url
     ET.SubElement(item, "description").text = f"El anime '{title}' estrenará doblaje en {lang}. Fecha y hora programada: {release_time}."
     ET.SubElement(item, "pubDate").text = datetime.now(timezone.utc).strftime("%a, %d %b %Y %H:%M:%S GMT")
 
@@ -66,47 +65,32 @@ def main():
     session = requests.Session()
     found_any_new = False
 
-    print(f"[DEBUG] Historial cargado con {len(history)} registros previos.")
-
-    for i, date_str in enumerate(mondays):
-        # AÑADIDO EL FILTRO PREMIUM AQUÍ
-        url = f"https://www.crunchyroll.com/es-es/simulcastcalendar?filter=premium&date={date_str}"
-        print(f"\n🗓️ Analizando semana del: {date_str}")
-        print(f"  [DEBUG] Solicitando URL: {url}")
+    for date_str in mondays:
+        calendar_url = f"https://www.crunchyroll.com/es-es/simulcastcalendar?filter=premium&date={date_str}"
+        print(f"🗓️ Analizando semana del: {date_str}")
         
         try:
-            r = session.get(url, headers=HEADERS, timeout=30)
-            print(f"  [DEBUG] Código HTTP recibido: {r.status_code}")
+            r = session.get(calendar_url, headers=HEADERS, timeout=30)
             r.raise_for_status()
         except Exception as e:
             print(f"  ⚠️ Error de conexión: {e}")
             time.sleep(2)
             continue
 
-        if i == 0:
-            print("  [DEBUG] Guardando el HTML en 'debug_crunchyroll.html' para inspección...")
-            with open("debug_crunchyroll.html", "w", encoding="utf-8") as f:
-                f.write(r.text)
-
         soup = BeautifulSoup(r.text, 'html.parser')
-        
         articles = soup.find_all('article', class_='js-release')
-        print(f"  [DEBUG] Etiquetas <article> de episodios encontradas: {len(articles)}")
         
-        if len(articles) == 0:
-            print("  [DEBUG] ❌ No se ha encontrado ningún episodio. Posible bloqueo antibot o calendario vacío.")
-        elif i == 0: 
-            print(f"  [DEBUG] Ejemplo del primer popover-url encontrado: {articles[0].get('data-popover-url', 'N/A')}")
-
+        # Agrupamos los estrenos de la semana por su 'slug' para poder filtrarlos
+        weekly_releases = {}
+        
         for art in articles:
             popover_url = art.get('data-popover-url', '')
-            
             is_es = popover_url.endswith('ESES')
             is_it = popover_url.endswith('ITIT')
             
             if is_es or is_it:
                 slug = art.get('data-slug', 'titulo-desconocido')
-                lang = "Castellano (ESES)" if is_es else "Italiano (ITIT)"
+                lang_code = 'ESES' if is_es else 'ITIT'
                 
                 title_tag = art.find(itemprop='name')
                 title = title_tag.text.strip() if title_tag else slug.replace('-', ' ').title()
@@ -114,16 +98,32 @@ def main():
                 time_tag = art.find('time', class_='available-time')
                 release_time = time_tag.get('datetime') if time_tag else "Fecha desconocida"
                 
-                unique_key = f"{slug}_{lang}"
+                if slug not in weekly_releases:
+                    weekly_releases[slug] = {'title': title, 'time': release_time, 'langs': set()}
                 
-                if unique_key not in history:
-                    print(f"  ✅ ¡NUEVO ESTRENO! {title} en {lang}")
-                    episode_url = f"https://www.crunchyroll.com/es-es/series/{slug}"
-                    add_rss_item(channel, title, lang, release_time, episode_url)
-                    history[unique_key] = release_time
-                    found_any_new = True
-                else:
-                    pass # Ya está en el historial, lo ignoramos en silencio
+                weekly_releases[slug]['langs'].add(lang_code)
+
+        # Procesamos la lista filtrada de la semana
+        for slug, data in weekly_releases.items():
+            # Si tiene Castellano, ignoramos por completo si también hay Italiano
+            if 'ESES' in data['langs']:
+                lang = "Castellano (ESES)"
+                lang_key = "ESES"
+            elif 'ITIT' in data['langs']:
+                lang = "Italiano (ITIT)"
+                lang_key = "ITIT"
+            else:
+                continue
+
+            unique_key = f"{slug}_{lang_key}"
+            
+            if unique_key not in history:
+                title = data['title']
+                release_time = data['time']
+                print(f"  ✅ ¡NUEVO ESTRENO! {title} en {lang}")
+                add_rss_item(channel, title, lang, release_time, calendar_url)
+                history[unique_key] = release_time
+                found_any_new = True
                 
         time.sleep(2)
 
