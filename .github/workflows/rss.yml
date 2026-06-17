@@ -2,8 +2,8 @@ name: Crunchyroll Calendar Tracker
 
 on:
   schedule:
-    - cron: '0 */4 * * *' # Se ejecuta cada 12 horas
-  workflow_dispatch: # Permite ejecución manual
+    - cron: '0 */12 * * *'
+  workflow_dispatch: 
 
 jobs:
   build:
@@ -28,28 +28,7 @@ jobs:
       run: |
         git config --global user.name "GitHub Actions"
         git config --global user.email "actions@github.com"
-        
-        # Esto crea los archivos en blanco si el bot no los ha generado
-        touch history.json feed.xml 
-        
-        git add feed.xml history.json
-        git commit -m "Actualización del calendario de estrenos" || exit 0
-        git push 
-    - name: Ejecutar Scraper
-      run: python scraper.py
-      
-    # Añade estas líneas para guardar el HTML de debug
-    - name: Subir HTML de debug
-      uses: actions/upload-artifact@v4
-      with:
-        name: crunchyroll-debug-html
-        path: debug_crunchyroll.html
-      
-    - name: Guardar cambios (RSS y base de datos)
-      run: |
-        git config --global user.name "GitHub Actions"
-        git config --global user.email "actions@github.com"
         touch history.json feed.xml 
         git add feed.xml history.json
         git commit -m "Actualización del calendario de estrenos" || exit 0
-        git push    
+        git push
