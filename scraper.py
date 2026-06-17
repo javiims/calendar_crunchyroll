@@ -69,7 +69,8 @@ def main():
     print(f"[DEBUG] Historial cargado con {len(history)} registros previos.")
 
     for i, date_str in enumerate(mondays):
-        url = f"https://www.crunchyroll.com/es-es/simulcastcalendar?date={date_str}"
+        # AÑADIDO EL FILTRO PREMIUM AQUÍ
+        url = f"https://www.crunchyroll.com/es-es/simulcastcalendar?filter=premium&date={date_str}"
         print(f"\n🗓️ Analizando semana del: {date_str}")
         print(f"  [DEBUG] Solicitando URL: {url}")
         
@@ -82,7 +83,6 @@ def main():
             time.sleep(2)
             continue
 
-        # Solo guardamos el HTML de la primera semana para no generar 8 archivos
         if i == 0:
             print("  [DEBUG] Guardando el HTML en 'debug_crunchyroll.html' para inspección...")
             with open("debug_crunchyroll.html", "w", encoding="utf-8") as f:
@@ -94,8 +94,8 @@ def main():
         print(f"  [DEBUG] Etiquetas <article> de episodios encontradas: {len(articles)}")
         
         if len(articles) == 0:
-            print("  [DEBUG] ❌ No se ha encontrado ningún episodio. Posible bloqueo antibot o cambio de HTML.")
-        elif i == 0: # Muestra un ejemplo de lo que extrae en la primera semana
+            print("  [DEBUG] ❌ No se ha encontrado ningún episodio. Posible bloqueo antibot o calendario vacío.")
+        elif i == 0: 
             print(f"  [DEBUG] Ejemplo del primer popover-url encontrado: {articles[0].get('data-popover-url', 'N/A')}")
 
         for art in articles:
@@ -123,9 +123,7 @@ def main():
                     history[unique_key] = release_time
                     found_any_new = True
                 else:
-                    # Chivato para saber si lo está detectando pero lo ignora porque ya está en el historial
-                    pass
-                    # print(f"  [DEBUG] Ignorando {title} ({lang}) porque ya estaba en el historial.")
+                    pass # Ya está en el historial, lo ignoramos en silencio
                 
         time.sleep(2)
 
