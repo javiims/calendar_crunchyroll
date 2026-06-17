@@ -9,7 +9,6 @@ import xml.etree.ElementTree as ET
 HISTORY_FILE = "history.json"
 RSS_FILE = "feed.xml"
 
-# Headers robustos para evitar bloqueos
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
     "Accept-Language": "es-ES,es;q=0.9",
@@ -17,7 +16,6 @@ HEADERS = {
 }
 
 def load_history():
-    """Carga el historial de animes ya detectados para no repetir avisos."""
     if not os.path.exists(HISTORY_FILE):
         return {}
     with open(HISTORY_FILE, "r", encoding="utf-8") as f:
@@ -36,9 +34,8 @@ def load_or_create_rss():
             tree = ET.parse(RSS_FILE)
             return tree, tree.getroot()
         except ET.ParseError:
-            # Si el archivo existe pero está vacío o corrupto, lo detecta y lo sobreescribe
-            print(f"  ⚠️ El archivo {RSS_FILE} está vacío o corrupto. Creando uno nuevo...")
-            pass # Continúa hacia abajo para crear uno nuevo
+            print("  [DEBUG] El archivo feed.xml está vacío o corrupto. Se creará uno nuevo.")
+            pass
     
     rss = ET.Element("rss", version="2.0")
     channel = ET.SubElement(rss, "channel")
@@ -55,11 +52,9 @@ def add_rss_item(channel, title, lang, release_time, url):
     ET.SubElement(item, "pubDate").text = datetime.now(timezone.utc).strftime("%a, %d %b %Y %H:%M:%S GMT")
 
 def get_next_8_mondays():
-    """Calcula la fecha del último lunes y los 7 lunes siguientes (8 semanas)."""
     today = datetime.now(timezone.utc)
-    days_since_monday = today.weekday() # 0 = Lunes
+    days_since_monday = today.weekday()
     last_monday = today - timedelta(days=days_since_monday)
-    
     return [(last_monday + timedelta(days=7 * i)).strftime('%Y-%m-%d') for i in range(8)]
 
 def main():
@@ -71,27 +66,41 @@ def main():
     session = requests.Session()
     found_any_new = False
 
-    for date_str in mondays:
+    print(f"[DEBUG] Historial cargado con {len(history)} registros previos.")
+
+    for i, date_str in enumerate(mondays):
         url = f"https://www.crunchyroll.com/es-es/simulcastcalendar?date={date_str}"
-        print(f"🗓️ Analizando semana del: {date_str}")
+        print(f"\n🗓️ Analizando semana del: {date_str}")
+        print(f"  [DEBUG] Solicitando URL: {url}")
         
         try:
             r = session.get(url, headers=HEADERS, timeout=30)
+            print(f"  [DEBUG] Código HTTP recibido: {r.status_code}")
             r.raise_for_status()
         except Exception as e:
-            print(f"  ⚠️ Error al acceder a la fecha {date_str}: {e}")
+            print(f"  ⚠️ Error de conexión: {e}")
             time.sleep(2)
             continue
 
+        # Solo guardamos el HTML de la primera semana para no generar 8 archivos
+        if i == 0:
+            print("  [DEBUG] Guardando el HTML en 'debug_crunchyroll.html' para inspección...")
+            with open("debug_crunchyroll.html", "w", encoding="utf-8") as f:
+                f.write(r.text)
+
         soup = BeautifulSoup(r.text, 'html.parser')
         
-        # Buscamos todos los artículos que representan episodios
         articles = soup.find_all('article', class_='js-release')
+        print(f"  [DEBUG] Etiquetas <article> de episodios encontradas: {len(articles)}")
         
+        if len(articles) == 0:
+            print("  [DEBUG] ❌ No se ha encontrado ningún episodio. Posible bloqueo antibot o cambio de HTML.")
+        elif i == 0: # Muestra un ejemplo de lo que extrae en la primera semana
+            print(f"  [DEBUG] Ejemplo del primer popover-url encontrado: {articles[0].get('data-popover-url', 'N/A')}")
+
         for art in articles:
             popover_url = art.get('data-popover-url', '')
             
-            # Verificamos si la URL del episodio termina en los idiomas que buscamos
             is_es = popover_url.endswith('ESES')
             is_it = popover_url.endswith('ITIT')
             
@@ -99,29 +108,26 @@ def main():
                 slug = art.get('data-slug', 'titulo-desconocido')
                 lang = "Castellano (ESES)" if is_es else "Italiano (ITIT)"
                 
-                # Intentamos extraer el título limpio (suele estar en una etiqueta cite, si no usamos el slug)
                 title_tag = art.find(itemprop='name')
                 title = title_tag.text.strip() if title_tag else slug.replace('-', ' ').title()
                 
-                # Extraemos la hora
                 time_tag = art.find('time', class_='available-time')
                 release_time = time_tag.get('datetime') if time_tag else "Fecha desconocida"
                 
-                # Creamos una clave única para el historial: slug + idioma
                 unique_key = f"{slug}_{lang}"
                 
                 if unique_key not in history:
-                    print(f"  ✅ ¡NUEVO ESTRENO DETECTADO! {title} en {lang} ({release_time})")
-                    
-                    # Añadir al RSS
-                    episode_url = f"https://www.crunchyroll.com/es-es/series/{slug}" # URL genérica de la serie
+                    print(f"  ✅ ¡NUEVO ESTRENO! {title} en {lang}")
+                    episode_url = f"https://www.crunchyroll.com/es-es/series/{slug}"
                     add_rss_item(channel, title, lang, release_time, episode_url)
-                    
-                    # Guardar en el historial para no volver a avisar
                     history[unique_key] = release_time
                     found_any_new = True
+                else:
+                    # Chivato para saber si lo está detectando pero lo ignora porque ya está en el historial
+                    pass
+                    # print(f"  [DEBUG] Ignorando {title} ({lang}) porque ya estaba en el historial.")
                 
-        time.sleep(2) # Pausa amigable para no saturar los servidores de Crunchyroll
+        time.sleep(2)
 
     if found_any_new:
         save_history(history)
