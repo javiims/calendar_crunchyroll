@@ -2,7 +2,7 @@ name: Crunchyroll Calendar Tracker
 
 on:
   schedule:
-    - cron: '0 */12 * * *' # Se ejecuta cada 12 horas
+    - cron: '0 */4 * * *' # Se ejecuta cada 12 horas
   workflow_dispatch: # Permite ejecución manual
 
 jobs:
