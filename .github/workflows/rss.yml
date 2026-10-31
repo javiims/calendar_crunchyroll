@@ -1,0 +1,52 @@
+name: Crunchyroll Calendar Tracker
+
+on:
+  schedule:
+    - cron: '0 */12 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: crunchyroll-tracker
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+
+    - name: Instalar dependencias
+      run: |
+        pip install -r requirements.txt
+        python -m playwright install --with-deps chromium
+
+    - name: Ejecutar Scraper
+      run: python scraper.py
+
+    - name: Subir capturas de depuración si falla
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: debug
+        path: |
+          debug_page.png
+          debug_page.html
+        if-no-files-found: ignore
+
+    - name: Guardar cambios (RSS y base de datos)
+      run: |
+        git config --global user.name "GitHub Actions"
+        git config --global user.email "actions@github.com"
+        touch history.json feed.xml
+        git add feed.xml history.json
+        git commit -m "Actualización del calendario de estrenos" || exit 0
+        git push
