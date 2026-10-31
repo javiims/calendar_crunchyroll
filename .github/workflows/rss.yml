@@ -8,38 +8,29 @@ on:
 permissions:
   contents: write
 
-concurrency:
-  group: crunchyroll-tracker
-  cancel-in-progress: false
-
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
 
     - name: Set up Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
         python-version: '3.11'
-        cache: 'pip'
 
     - name: Instalar dependencias
-      run: |
-        pip install -r requirements.txt
-        python -m playwright install --with-deps chromium
+      run: pip install -r requirements.txt
 
     - name: Ejecutar Scraper
       run: python scraper.py
 
-    - name: Subir capturas de depuración si falla
+    - name: Subir respuesta de depuración si falla
       if: failure()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: debug
-        path: |
-          debug_page.png
-          debug_page.html
+        path: debug_response.txt
         if-no-files-found: ignore
 
     - name: Guardar cambios (RSS y base de datos)
