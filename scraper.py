@@ -55,7 +55,6 @@ USER_AGENT = (
 )
 
 CARD_SELECTOR = '[data-t="release-calendar-card"]'
-DAY_COLUMN_SELECTOR = '[data-t="day-column"]'
 
 SPANISH_MONTHS = {
     "ene": 1, "feb": 2, "mar": 3, "abr": 4, "may": 5, "jun": 6,
@@ -151,7 +150,7 @@ def read_saved_page(path):
 
 
 def card_count(page):
-    return page.locator(CARD_SELECTOR).count() + page.locator(DAY_COLUMN_SELECTOR).count()
+    return page.locator(CARD_SELECTOR).count()
 
 
 def dismiss_overlays(page):
@@ -169,34 +168,6 @@ def dismiss_overlays(page):
                 page.wait_for_timeout(500)
         except Exception:
             pass
-
-
-def wait_for_calendar_ready(page, timeout=90_000):
-    """Waits for the calendar to render using stable DOM signals rather than a brittle card attribute."""
-    deadline = datetime.now().timestamp() + (timeout / 1000)
-
-    selectors = [
-        DAY_COLUMN_SELECTOR,
-        '[data-t="week-range"]',
-        'button[aria-label*="filter" i]',
-        '[data-t="previous-week"]',
-        '.erc-calendar',
-        '[data-t="calendar-day-grid"]',
-    ]
-
-    for sel in selectors:
-        try:
-            page.wait_for_selector(sel, timeout=min(10_000, max(2_000, int((deadline - datetime.now().timestamp()) * 1000))), state="visible")
-            return
-        except Exception:
-            continue
-
-    # Last-resort fallback: accept the page as loaded once the main document is interactive.
-    page.wait_for_load_state("networkidle", timeout=30_000)
-    page.wait_for_timeout(2_000)
-
-    if page.locator(DAY_COLUMN_SELECTOR).count() == 0:
-        raise RuntimeError("La página del calendario no cargó ningún día/columna visible.")
 
 
 def find_filter_option(page):
@@ -294,7 +265,7 @@ def fetch_pages_live(weeks_back=WEEKS_BACK, debug=False):
         page = context.new_page()
         try:
             page.goto(CALENDAR_URL, wait_until="domcontentloaded", timeout=90_000)
-            wait_for_calendar_ready(page, timeout=90_000)
+            page.wait_for_selector(CARD_SELECTOR, timeout=90_000)
             page.wait_for_timeout(2_000)
             dismiss_overlays(page)
 
@@ -392,7 +363,7 @@ def parse_calendar(html, today):
     soup = BeautifulSoup(html, "html.parser")
     releases = []
 
-    for column in soup.select(DAY_COLUMN_SELECTOR):
+    for column in soup.select('[data-t="day-column"]'):
         date_tag = column.select_one('[class*="day-date"]')
         day = parse_day_date(date_tag.get_text(strip=True), today) if date_tag else None
 
